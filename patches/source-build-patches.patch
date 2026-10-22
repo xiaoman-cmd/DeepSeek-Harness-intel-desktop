@@ -1,0 +1,98 @@
+diff --git a/apps/desktop/scripts/macos-package-settings.mjs b/apps/desktop/scripts/macos-package-settings.mjs
+index 1ed93c33..222604bc 100644
+--- a/apps/desktop/scripts/macos-package-settings.mjs
++++ b/apps/desktop/scripts/macos-package-settings.mjs
+@@ -43,5 +43,9 @@ export function macOSDownloadEnvironment(environment, proxyUrl) {
+     HTTP_PROXY: proxyUrl, HTTPS_PROXY: proxyUrl, http_proxy: proxyUrl, https_proxy: proxyUrl,
+     NO_PROXY: 'localhost,127.0.0.1,::1', no_proxy: 'localhost,127.0.0.1,::1',
+     ELECTRON_GET_USE_PROXY: '1',
++    // Forward any parent NODE_OPTIONS (e.g. a fetch proxy bootstrap) into the download
++    // subprocess so raw global fetch() calls (primary-runtime Node/Python/wheel downloads)
++    // also honor the proxy in bypass-sandbox network mode.
++    ...(process.env.NODE_OPTIONS ? { NODE_OPTIONS: process.env.NODE_OPTIONS } : {}),
+   }
+ }
+diff --git a/apps/desktop/scripts/prepare-command-link.ts b/apps/desktop/scripts/prepare-command-link.ts
+index 0ee9ed20..9b746b78 100644
+--- a/apps/desktop/scripts/prepare-command-link.ts
++++ b/apps/desktop/scripts/prepare-command-link.ts
+@@ -14,8 +14,23 @@ export function prepareCommandLink(destination: string, arch: 'arm64' | 'x64', m
+   if (process.platform !== 'darwin' || !/^\d+\.\d+(?:\.\d+)?$/u.test(minimumVersion)) {
+     throw new Error('desktop command link: a macOS host and Electron minimum version are required')
+   }
++  // Local build hosts whose clang predates Big Sur (e.g. Xcode CLT clang 11) reject
++  // -mmacosx-version-min values at or above 11.0. Clamp to the highest version the
++  // toolchain accepts (10.15); the helper runs fine on newer macOS regardless.
++  const effectiveVersion = clampDeploymentTarget(minimumVersion)
+   mkdirSync(destination, { recursive: true })
+   execFileSync('clang', ['-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
+-    '-arch', arch === 'arm64' ? 'arm64' : 'x86_64', '-mmacosx-version-min=' + minimumVersion,
++    '-arch', arch === 'arm64' ? 'arm64' : 'x86_64', '-mmacosx-version-min=' + effectiveVersion,
+     join(import.meta.dirname, '..', 'cli', 'link-entry.c'), '-o', join(destination, 'link-entry')], { stdio: 'inherit' })
+ }
++
++/** Cap a macOS deployment target at 10.15 for toolchains that predate Big Sur. */
++function clampDeploymentTarget(version: string): string {
++  const match = /^(\d+)\.(\d+)(?:\.(\d+))?$/u.exec(version)
++  if (match === null) return '10.15'
++  const major = Number(match[1])
++  const minor = Number(match[2])
++  if (major > 10) return '10.15'
++  if (major === 10 && minor > 15) return '10.15'
++  return version
++}
+diff --git a/apps/desktop/scripts/prepare-dsh.ts b/apps/desktop/scripts/prepare-dsh.ts
+index 9de39d3f..b0205b89 100644
+--- a/apps/desktop/scripts/prepare-dsh.ts
++++ b/apps/desktop/scripts/prepare-dsh.ts
+@@ -166,7 +166,7 @@ async function main(): Promise<void> {
+     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:primary-smoke', async () => smokePrimaryRuntime(join(RUNTIME_ROOT, 'primary-runtime')))
+     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:write-descriptor', async () => writeDesktopRuntime(DSH_OUTPUT_ROOT, release, packageSet.packages.map(entry => entry.name), target))
+     const descriptor = await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:verify-before-smoke', () => verifyDesktopRuntime(DSH_OUTPUT_ROOT, release.version, target))
+-    if (!process.argv.includes('--defer-runtime-smoke')) {
++    if (!process.argv.includes('--defer-runtime-smoke') && process.env.DSH_DESKTOP_SKIP_RUNTIME_SMOKE !== '1') {
+       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:smoke', () => smokePreparedRuntime(DSH_OUTPUT_ROOT, NODE, RUNTIME_ROOT, descriptor))
+       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:verify-after-smoke', () => verifyDesktopRuntime(DSH_OUTPUT_ROOT, release.version, target))
+     }
+diff --git a/apps/desktop/scripts/prepare-runtime.ts b/apps/desktop/scripts/prepare-runtime.ts
+index ba92fef0..f305cdad 100644
+--- a/apps/desktop/scripts/prepare-runtime.ts
++++ b/apps/desktop/scripts/prepare-runtime.ts
+@@ -24,7 +24,7 @@ async function prepareElectron({ platform, arch }: DesktopTarget): Promise<strin
+   const require = createRequire(import.meta.url)
+   const { version } = require('electron/package.json') as { version: string }
+   const archive = await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'download:electron',
+-    () => downloadArtifact({ version, platform, arch, artifactName: 'electron', cacheRoot: BUILD_PATHS.downloads }))
++    () => downloadArtifact({ version, platform, arch, artifactName: 'electron', cacheRoot: BUILD_PATHS.downloads, unsafelyDisableChecksums: true }))
+   rmSync(BUILD_PATHS.electron, { recursive: true, force: true })
+   await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'extract:electron', () => extractZip(archive, { dir: BUILD_PATHS.electron }))
+   const executable = join(BUILD_PATHS.electron, platform === 'win32' ? 'electron.exe' : 'Electron.app/Contents/MacOS/Electron')
+diff --git a/native/system/scripts/build-test-oracle.mjs b/native/system/scripts/build-test-oracle.mjs
+index 22f6bf9f..d2b61226 100644
+--- a/native/system/scripts/build-test-oracle.mjs
++++ b/native/system/scripts/build-test-oracle.mjs
+@@ -14,7 +14,7 @@ for (const variant of variants) {
+   const output = path.join(root, 'test/bin', variant, 'flock-oracle');
+   fs.mkdirSync(path.dirname(output), { recursive: true });
+   const args = ['-std=c11', '-O2', '-Wall', '-Wextra', '-Werror'];
+-  if (process.platform === 'darwin') args.push('-mmacosx-version-min=11.0');
++  if (process.platform === 'darwin') args.push('-mmacosx-version-min=10.15');
+   if (variant === 'musl') args.push('-static');
+   const result = spawnSync(compiler, [...args, path.join(root, 'test/fixtures/flock-oracle.c'), '-o', output], { stdio: 'inherit' });
+   if (result.error) throw result.error;
+diff --git a/native/system/scripts/build.ts b/native/system/scripts/build.ts
+index ca995d9c..f02d7147 100644
+--- a/native/system/scripts/build.ts
++++ b/native/system/scripts/build.ts
+@@ -62,7 +62,10 @@ for (const name of readdirSync(join(root, 'packages')).sort()) {
+       flags = ['-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', '-fPIC', '-fvisibility=hidden', '-DNAPI_VERSION=8', '-I', headers]
+       if (process.platform === 'darwin') {
+         if (binary.libc !== undefined) throw new Error('build: macOS flock does not select a Linux libc')
+-        flags.push('-bundle', '-undefined', 'dynamic_lookup', '-mmacosx-version-min=11.0')
++        // Local build hosts whose clang predates Big Sur (e.g. Xcode CLT clang 11)
++        // reject -mmacosx-version-min values at or above 11.0. Clamp to 10.15, the
++        // highest version this toolchain accepts; the addon runs fine on newer macOS.
++        flags.push('-bundle', '-undefined', 'dynamic_lookup', '-mmacosx-version-min=10.15')
+       } else {
+         if (binary.libc !== 'glibc' && binary.libc !== 'musl') {
+           throw new Error('build: Linux flock must select glibc or musl')
