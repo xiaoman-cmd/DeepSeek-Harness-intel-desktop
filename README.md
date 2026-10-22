@@ -46,14 +46,15 @@
 .
 ├── README.md                             # 本文件
 ├── BUILD.md                              # 完整构建过程与踩坑记录
+├── .gitattributes                         # Git LFS 规则（*.dmg 走 LFS）
+├── DeepSeek Harness-0.2.1-rc.2-x64.dmg    # 未签名产物，Git LFS 存储
 ├── buildtools/                           # 本机构建辅助脚本
 │   ├── bootstrap.cjs                     # 给 Node 全局 fetch 注入代理（绕过下载失败）
 │   ├── seed_cache.py                     # 预种 primary-runtime 缓存（sha256 命名）
 │   ├── seed_electron.py                  # 预种 Electron 到 @electron/get 缓存
 │   └── download-toolchain.sh            # 用 npmmirror 一键下载工具链（electron + dmgbuild）
-├── patches/
-│   └── source-build-patches.patch        # 对上游源码的 6 处修改（适配旧 clang / 离线构建）
-└── logs/                                 # 各次构建的原始日志（build*.log）
+└── patches/
+    └── source-build-patches.patch        # 对上游源码的 6 处修改（适配旧 clang / 离线构建）
 ```
 
 ## 自行复现构建

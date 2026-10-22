@@ -123,4 +123,4 @@ codesign -dvv "..../DeepSeek Harness.app" 2>&1 | head -3
 
 ## 9. 构建日志
 
-`logs/build*.log` 为本机历次构建的原始日志，记录了上述每个阶段的实际输出与排障过程。
+本机历次构建的原始日志（`build*.log`）保留在本地，**不随仓库发布**；如需排查排障过程，可参照上文各阶段说明与 `buildtools/`、`patches/` 中的脚本与补丁。

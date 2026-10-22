@@ -1,4 +1,4 @@
-# This repo ships the build process only; the DMG is published separately as a
-# Release asset, so no Git LFS tracking is needed here. If you later add large
-# binaries via Git LFS, uncomment the rule below:
-# *.dmg filter=lfs diff=lfs merge=lfs -text
+# Git LFS tracking for the large unsigned DMG (~394 MB), which exceeds GitHub's
+# 100 MB per-file limit. After cloning, run `git lfs pull` to fetch the real
+# binary; or download it directly from the repository's file view.
+*.dmg filter=lfs diff=lfs merge=lfs -text
