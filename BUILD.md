@@ -3,7 +3,7 @@
 本文件记录如何在 Intel Mac 上从源码构建 deepseek-harness 桌面端未签名 x64 DMG。
 构建机：Intel Mac (x86_64), macOS 13.1, Xcode CLT clang 11.0.3, Node 22.22.2, pnpm 11.28.5, git 2.23.0。
 
-目标产物：`DeepSeek Harness-0.2.1-rc.2-x64.dmg`（纯 x86_64，ad-hoc 签名，未公证）。
+目标产物：`DeepSeek Harness-0.2.1-rc.2-x64.dmg`（纯 x86_64，ad-hoc 签名，未公证），由作者另行发布（Release）。
 
 ## 1. 环境准备
 

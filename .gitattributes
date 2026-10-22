@@ -1,1 +1,4 @@
-*.dmg filter=lfs diff=lfs merge=lfs -text
+# This repo ships the build process only; the DMG is published separately as a
+# Release asset, so no Git LFS tracking is needed here. If you later add large
+# binaries via Git LFS, uncomment the rule below:
+# *.dmg filter=lfs diff=lfs merge=lfs -text

@@ -44,7 +44,6 @@
 
 ```
 .
-├── DeepSeek Harness-0.2.1-rc.2-x64.dmg   # 产物（Git LFS）
 ├── README.md                             # 本文件
 ├── BUILD.md                              # 完整构建过程与踩坑记录
 ├── buildtools/                           # 本机构建辅助脚本
